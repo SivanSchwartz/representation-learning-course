@@ -206,9 +206,107 @@ class EncoderClassifier(pl.LightningModule):
 
         self.head = nn.Linear(latent_dim, num_classes)  # [B, latent_dim] -> [B, num_classes]
 
+        # eval() before freezing: a frozen encoder must not update BatchNorm stats
+        # or dropout. train() below keeps that, because Lightning calls train()
+        # at the start of every epoch and would otherwise undo it.
         if self.freeze_encoder:
+            self.encoder.eval()
             for p in self.encoder.parameters():
                 p.requires_grad = False
+
+        self.loss_fn = nn.CrossEntropyLoss()
+        self.accuracy = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes)
+        self.f1_score = torchmetrics.F1Score(task="multiclass", num_classes=num_classes)
+
+    def train(self, mode=True):
+        super().train(mode)
+        if self.freeze_encoder:
+            self.encoder.eval()
+        return self
+
+    def forward(self, x):
+        z = self.encoder(x)  # [B, 1, 28, 28] -> [B, latent_dim]
+        return self.head(z)  # [B, latent_dim] -> [B, num_classes]
+
+    def training_step(self, batch, batch_idx):
+        loss, scores, y = self._common_step(batch, batch_idx)
+        accuracy = self.accuracy(scores, y)
+        f1_score = self.f1_score(scores, y)
+        self.log_dict(
+            {
+                "train_loss": loss,
+                "train_accuracy": accuracy,
+                "train_f1_score": f1_score,
+            },
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        x, y = batch
+        if batch_idx % 100 == 0:
+            x = x[:8]
+            grid = torchvision.utils.make_grid(x.view(-1, 1, 28, 28))
+            self.logger.experiment.add_image("train_images", grid, self.global_step)
+        return {"loss": loss, "scores": scores, "y": y}
+
+    def validation_step(self, batch, batch_idx):
+        loss, scores, y = self._common_step(batch, batch_idx)
+        accuracy = self.accuracy(scores, y)
+        self.log_dict(
+            {"val_loss": loss, "val_accuracy": accuracy},
+            on_step=False, on_epoch=True, prog_bar=True,
+        )
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        loss, scores, y = self._common_step(batch, batch_idx)
+        accuracy = self.accuracy(scores, y)
+        self.log_dict(
+            {"test_loss": loss, "test_accuracy": accuracy},
+            on_step=False, on_epoch=True,
+        )
+        return loss
+
+    def _common_step(self, batch, batch_idx):
+        x, y = batch  # x: [B, 1, 28, 28]
+        outputs = self.forward(x)
+        loss = self.loss_fn(outputs, y)
+        return loss, outputs, y
+
+    def predict_step(self, batch, batch_idx):
+        x, y = batch
+        scores = self.forward(x)
+        preds = torch.argmax(scores, dim=1)
+        return preds
+
+    def configure_optimizers(self):
+        # Linear probing: only the head is trainable, so only the head is optimized.
+        params = [p for p in self.parameters() if p.requires_grad]
+        return optim.Adam(params, lr=self.lr)
+
+
+class SupervisedEncoder(pl.LightningModule):
+    """Convolutional encoder plus a linear head, both trained from scratch.
+
+    Same encoder layers as AutoEncoder, with cross-entropy instead of a decoder.
+    This sits beside NN: NN is ResNet-18, this is the small encoder.
+    """
+
+    def __init__(self, learning_rate, num_classes, latent_dim):
+        super().__init__()
+        self.save_hyperparameters()
+        self.lr = learning_rate
+
+        # Same layers, same order as AutoEncoder.encoder.
+        self.encoder = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),  # [B, 1, 28, 28] -> [B, 32, 14, 14]
+            nn.ReLU(),  # [B, 32, 14, 14] -> [B, 32, 14, 14]
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # [B, 32, 14, 14] -> [B, 64, 7, 7]
+            nn.ReLU(),  # [B, 64, 7, 7] -> [B, 64, 7, 7]
+            nn.Flatten(),  # [B, 64, 7, 7] -> [B, 3136]
+            nn.Linear(64 * 7 * 7, latent_dim),  # [B, 3136] -> [B, latent_dim]
+        )
+        self.head = nn.Linear(latent_dim, num_classes)  # [B, latent_dim] -> [B, num_classes]
 
         self.loss_fn = nn.CrossEntropyLoss()
         self.accuracy = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes)
@@ -270,6 +368,4 @@ class EncoderClassifier(pl.LightningModule):
         return preds
 
     def configure_optimizers(self):
-        # Linear probing: only the head is trainable, so only the head is optimized.
-        params = [p for p in self.parameters() if p.requires_grad]
-        return optim.Adam(params, lr=self.lr)
+        return optim.Adam(self.parameters(), lr=self.lr)

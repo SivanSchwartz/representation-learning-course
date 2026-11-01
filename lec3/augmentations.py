@@ -1,27 +1,21 @@
-"""Augmentations used for MNIST training."""
-
-from pathlib import Path
-
-import matplotlib.pyplot as plt
 import torch
-from torchvision import transforms
 from torchvision.transforms import v2
-from torchvision.datasets import MNIST
+
 
 def build_mnist_transforms():
     train_transform = v2.Compose(
         [
-            transforms.ToImageTensor(),
-            v2.RandomApply(
-                [
-                    v2.RandomInvert(p=1.0),
-                    v2.RandomGaussianNoise(mean=0.0, std=0.1, p=1.0),
-                    v2.RandomGaussianBlur(kernel_size=(3, 3), sigma=(0.1, 2.0), p=1.0),
-                ],
-                p=0.5,
-            ),
-
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.RandomAffine(degrees=10, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+            v2.Normalize((0.1307,), (0.3081,)),
         ]
     )
-    eval_transform = v2.Compose([v2.ToImageTensor()])
+    eval_transform = v2.Compose(
+        [
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize((0.1307,), (0.3081,)),
+        ]
+    )
     return train_transform, eval_transform

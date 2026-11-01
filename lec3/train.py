@@ -10,8 +10,10 @@ from utils import parse_args, build_model
 torch.set_float32_matmul_precision("medium")  # to make lightning happy
 RUN_ID = time.strftime("%Y-%m-%d_%H-%M-%S")
 
-# pretrain and pretrain_supervised train on the source dataset. The others use the target.
-PRETRAIN_MODES = ("pretrain", "pretrain_supervised")
+# These train on the source dataset. The others use the target.
+PRETRAIN_MODES = ("pretrain", "pretrain_supervised", "pretrain_supervise_encoder")
+# Both write the encoder file that linear_probe and finetune load. The later run overwrites it.
+SAVE_ENCODER_MODES = ("pretrain", "pretrain_supervise_encoder")
 
 
 def run(mode):
@@ -58,9 +60,10 @@ def run(mode):
     trainer.validate(model, dm)
     results = trainer.test(model, dm)
 
-    if mode == "pretrain":
-        # Keep the encoder. The decoder is not saved; EncoderClassifier has its own head.
+    if mode in SAVE_ENCODER_MODES:
+        # Keep the encoder. The decoder or the classification head is not saved.
         torch.save(model.encoder.state_dict(), config.ENCODER_PATH)
+    if mode == "pretrain":
         return results[0]["test_loss"]
     return results[0]["test_accuracy"]
 
@@ -74,7 +77,7 @@ if __name__ == "__main__":
     print("\nTest results:")
     for mode, value in test_results.items():
         if mode == "pretrain":
-            print(f"  {mode:<20} ({config.SOURCE_DATASET}): reconstruction MSE {value:.4f}")
+            print(f"  {mode:<28} ({config.SOURCE_DATASET}): reconstruction MSE {value:.4f}")
         else:
             dataset_name = config.SOURCE_DATASET if mode in PRETRAIN_MODES else config.TARGET_DATASET
-            print(f"  {mode:<20} ({dataset_name}): accuracy {value:.3f}")
+            print(f"  {mode:<28} ({dataset_name}): accuracy {value:.3f}")

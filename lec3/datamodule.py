@@ -1,8 +1,9 @@
 import torch
 import torchvision.datasets as datasets
-import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, random_split, Subset
 import pytorch_lightning as pl
+
+from augmentations import build_mnist_transforms
 
 
 class MnistDataModule(pl.LightningDataModule):
@@ -21,15 +22,25 @@ class MnistDataModule(pl.LightningDataModule):
         self.dataset_cls(self.data_dir, train=False, download=True)
 
     def setup(self, stage):
-        entire_dataset = self.dataset_cls(
+        train_transform, eval_transform = build_mnist_transforms()
+        # Two copies of the training set so train can be augmented and val cannot.
+        # random_split subsets share one dataset, so they cannot hold different transforms.
+        train_full = self.dataset_cls(
             root=self.data_dir,
             train=True,
-            transform=transforms.ToTensor(),
+            transform=train_transform,
+            download=False,
+        )
+        val_full = self.dataset_cls(
+            root=self.data_dir,
+            train=True,
+            transform=eval_transform,
             download=False,
         )
         # Fixed seed -> every experiment (and every call to setup) gets the same split
         generator = torch.Generator().manual_seed(42)
-        self.train_ds, self.val_ds = random_split(entire_dataset, [50000, 10000], generator=generator)
+        self.train_ds, val_split = random_split(train_full, [50000, 10000], generator=generator)
+        self.val_ds = Subset(val_full, val_split.indices)
         # Keep only n_train labeled images (simulates a small labeled dataset)
         if self.n_train is not None:
             self.train_ds = Subset(self.train_ds, range(self.n_train))
@@ -37,7 +48,7 @@ class MnistDataModule(pl.LightningDataModule):
         self.test_ds = self.dataset_cls(
             root=self.data_dir,
             train=False,
-            transform=transforms.ToTensor(),
+            transform=eval_transform,
             download=False,
         )
 
