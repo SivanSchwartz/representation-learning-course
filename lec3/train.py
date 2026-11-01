@@ -1,34 +1,17 @@
 import time
 import torch
 import pytorch_lightning as pl
-from model import NN, AutoEncoder, EncoderClassifier
 from datamodule import MnistDataModule
 import config
 from callbacks import MyPrintingCallback, EarlyStopping, ColabProgressBar, EpochMetricsCallback
 from pytorch_lightning.loggers import TensorBoardLogger
+from utils import parse_args, build_model
 
 torch.set_float32_matmul_precision("medium")  # to make lightning happy
 RUN_ID = time.strftime("%Y-%m-%d_%H-%M-%S")
 
-# pretrain: AutoEncoder. pretrain_supervised and end_to_end: NN.
-# linear_probe and finetune: EncoderClassifier, which loads the autoencoder's encoder.
+# pretrain and pretrain_supervised train on the source dataset. The others use the target.
 PRETRAIN_MODES = ("pretrain", "pretrain_supervised")
-
-
-def build_model(mode):
-    if mode == "pretrain":
-        return AutoEncoder(learning_rate=config.LEARNING_RATE, latent_dim=config.LATENT_DIM)
-
-    if mode in ("linear_probe", "finetune"):
-        return EncoderClassifier(
-            learning_rate=config.FINETUNE_LEARNING_RATE if mode == "finetune" else config.LEARNING_RATE,
-            num_classes=config.NUM_CLASSES,
-            latent_dim=config.LATENT_DIM,
-            encoder_path=config.ENCODER_PATH,
-            freeze_encoder=(mode == "linear_probe"),
-        )
-
-    return NN(learning_rate=config.LEARNING_RATE, num_classes=config.NUM_CLASSES)
 
 
 def run(mode):
@@ -83,8 +66,9 @@ def run(mode):
 
 
 if __name__ == "__main__":
+    args = parse_args()
     test_results = {}
-    for mode in config.MODES:
+    for mode in args.mode:
         test_results[mode] = run(mode)
 
     print("\nTest results:")

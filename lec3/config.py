@@ -20,10 +20,10 @@ PRECISION = "16-mixed"  # same as 16 (the old name); falls back to bf16 on CPU
 #   "linear_probe"        : EncoderClassifier - that encoder FROZEN + a new head, Fashion-MNIST
 #   "finetune"            : EncoderClassifier - that encoder + a new head, all weights, Fashion-MNIST
 #   "end_to_end"          : NN - ResNet-18 from scratch on Fashion-MNIST
-# Run one experiment, e.g. ["linear_probe"] (needs a saved encoder),
-# or chain them to see step 1 and step 2 one after the other.
-# The previous supervised pretrain, for comparison:
-#   MODES = ["pretrain_supervised"]
+# Default when train.py is started with no --mode.
+# Choose from the command line instead of editing this list, for example:
+#   python train.py --mode pretrain
+#   python train.py --mode linear_probe finetune
 MODES = ["pretrain", "linear_probe", "finetune", "end_to_end"]
 
 SOURCE_DATASET = "MNIST"
