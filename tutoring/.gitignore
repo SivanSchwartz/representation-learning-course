@@ -1,0 +1,8 @@
+# Never published: sources, solutions and tutor cues live here, on the tutor's machine only.
+_private/
+# Your tutor notebooks in the live-coding clone.
+_tutor/
+# Your training runs.
+tb_logs/
+lightning_logs/
+.ipynb_checkpoints/

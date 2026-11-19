@@ -1,0 +1,16 @@
+# The conda environment for the tutoring sessions.
+# Create it once with:   conda env create -f tutoring/environment.yml
+# Activate it with:      conda activate replearn
+# CPU-only PyTorch on purpose: a smaller download, and it works the same on every laptop.
+name: replearn
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pytorch=*=cpu*
+  - pytorch-lightning
+  - torchmetrics
+  - tensorboard
+  - numpy
+  - matplotlib
+  - ipykernel
